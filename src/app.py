@@ -101,20 +101,33 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
+@app.post("/login")
+def login(username: str, password: str):
+    """Authenticate a teacher"""
+    teachers = load_teachers()
+    if username in teachers and teachers[username] == password:
+        return {"authenticated": True, "message": f"Welcome, {username}!"}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
 @app.get("/activities")
 def get_activities():
     return activities
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
+def signup_for_activity(activity_name: str, email: str, is_teacher: bool = False):
+    """Sign up a student for an activity (or teacher can register students)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
 
     # Get the specific activity
     activity = activities[activity_name]
+    
+    # Check capacity
+    if len(activity["participants"]) >= activity["max_participants"]:
+        raise HTTPException(status_code=400, detail="No spots available")
 
     # Validate student is not already signed up
     if email in activity["participants"]:
@@ -129,8 +142,8 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
-    """Unregister a student from an activity"""
+def unregister_from_activity(activity_name: str, email: str, teacher_auth: bool = False):
+    """Unregister a student from an activity (teachers only can force unregister)"""
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -143,6 +156,13 @@ def unregister_from_activity(activity_name: str, email: str):
         raise HTTPException(
             status_code=400,
             detail="Student is not signed up for this activity"
+        )
+    
+    # Only teachers can unregister others
+    if not teacher_auth:
+        raise HTTPException(
+            status_code=403,
+            detail="Only teachers can unregister students"
         )
 
     # Remove student
